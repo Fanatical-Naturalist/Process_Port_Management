@@ -8,7 +8,8 @@
 ### 3. 强制kill占用特定端口的进程；
 
 
-
+## 创建快捷方式运行脚本
+### 新建快捷方式，并输入如下命令：powershell.exe -ExecutionPolicy Bypass -File "D:\github_project\my_project\Process_Port_Management\main.ps1"
 
 
 *code was generated using Deepseek;  
