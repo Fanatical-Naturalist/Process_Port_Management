@@ -23,25 +23,26 @@ function Get-ProcessWithPorts {
     }
 }
 
-# 修复函数：通过端口搜索进程（严格匹配）
-function Search-ProcessByPort($port) {
-    Get-ProcessWithPorts | Where-Object { 
-        $_.TCPPorts -split ',\s*' -contains $port.ToString()
-    } | Format-Table -AutoSize @(
-        @{Label="PID"; Expression={$_.PID}; Alignment="Center"},
-        @{Label="ProcessName"; Expression={$_.ProcessName}; Alignment="Center"},
-        @{Label="TCPPorts"; Expression={$_.TCPPorts}; Alignment="Center"}
-    )
+# 过滤非N/A端口的进程
+function Get-FilteredProcesses($showAll) {
+    $rawData = Get-ProcessWithPorts
+    if (-not $showAll) {
+        $rawData | Where-Object { $_.TCPPorts -ne 'N/A' }
+    } else {
+        $rawData
+    }
 }
 
 # 主逻辑循环
 $refreshNeeded = $true
+$showAllProcesses = $false
 do {
     # 刷新列表逻辑
     if ($refreshNeeded) {
         Clear-Host
-        Write-Host "`nProcess List with TCP Ports:`n"
-        Get-ProcessWithPorts | Format-Table -AutoSize @(
+        $currentProcessList = Get-FilteredProcesses -showAll $showAllProcesses
+        Write-Host "`nProcess List with TCP Ports ($(if ($showAllProcesses) {'All'} else {'Filtered'})):`n"
+        $currentProcessList | Format-Table -AutoSize @(
             @{Label="PID"; Expression={$_.PID}; Alignment="Center"},
             @{Label="ProcessName"; Expression={$_.ProcessName}; Alignment="Center"},
             @{Label="TCPPorts"; Expression={$_.TCPPorts}; Alignment="Center"}
@@ -49,19 +50,19 @@ do {
         $refreshNeeded = $false
     }
 
-    # 显示命令提示（不自动清屏）
+    # 显示命令提示（已移除 search 命令）
     Write-Host "`nCommands:"
     Write-Host "  kill [PID]      - Terminate process by PID"
-    Write-Host "  search [PORT]   - Find processes using specific port"
     Write-Host "  clean [PORT]    - Kill all processes using specific port"
-    Write-Host "  refresh         - Reload list"
+    Write-Host "  filter          - Toggle port filter (current: $(if ($showAllProcesses) {'Show All'} else {'Hide N/A'}))"
+    Write-Host "  refresh         - Reload filtered list"
+    Write-Host "  refresh all     - Reload full list"
     Write-Host "  exit            - Quit program`n"
 
-    # 读取用户输入（无阻塞等待）
+    # 读取用户输入（直接响应 exit 命令）
     $input = Read-Host -Prompt "Enter command"
     $command = $input -split ' '
 
-    # 处理命令
     switch ($command[0].ToLower()) {
         'kill' {
             if ($command.Count -ge 2) {
@@ -74,22 +75,10 @@ do {
                 }
             }
         }
-        'search' {
-            if ($command.Count -ge 2 -and $command[1] -match '^\d+$') {
-                $targetPort = $command[1]
-                Write-Host "`nProcesses using port $targetPort :`n"
-                $result = Search-ProcessByPort $targetPort
-                if (-not $result) {
-                    Write-Host "No processes found using port $targetPort" -ForegroundColor Yellow
-                }
-            } else {
-                Write-Host "`n[ERROR] Invalid port number. Usage: search [PORT]" -ForegroundColor Red
-            }
-        }
         'clean' {
             if ($command.Count -ge 2 -and $command[1] -match '^\d+$') {
                 $targetPort = $command[1]
-                $processesToKill = Get-ProcessWithPorts | Where-Object { 
+                $processesToKill = $currentProcessList | Where-Object { 
                     $_.TCPPorts -split ',\s*' -contains $targetPort.ToString() 
                 }
                 
@@ -109,16 +98,25 @@ do {
                 Write-Host "`n[ERROR] Invalid port number. Usage: clean [PORT]" -ForegroundColor Red
             }
         }
-        'refresh' { 
+        'filter' {
+            $showAllProcesses = -not $showAllProcesses
             $refreshNeeded = $true
         }
-        'exit' { return }
+        'refresh' {
+            if ($command.Count -ge 2 -and $command[1] -eq 'all') {
+                $showAllProcesses = $true
+            } else {
+                $showAllProcesses = $false
+            }
+            $refreshNeeded = $true
+        }
+        'exit' { 
+            exit  # 直接退出脚本，无需额外操作
+        }
         default {
-            Write-Host "`n[ERROR] Invalid command. Valid commands: kill, search, clean, refresh, exit" -ForegroundColor Yellow
+            Write-Host "`n[ERROR] Invalid command. Valid commands: kill, clean, filter, refresh, exit" -ForegroundColor Yellow
         }
     }
 
-    # 添加空行分隔命令结果
     Write-Host ""
-
 } while ($true)
